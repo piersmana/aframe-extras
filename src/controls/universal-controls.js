@@ -6,7 +6,8 @@
 
 var COMPONENT_SUFFIX = '-controls',
     MAX_DELTA = 0.2, // ms
-    PI_2 = Math.PI / 2;
+    PI_2 = Math.PI / 2,
+    EPS = 10e-6;
 
 module.exports = {
 
@@ -22,12 +23,12 @@ module.exports = {
     movementControls:     { default: ['gamepad', 'keyboard', 'touch', 'hmd'] },
     rotationEnabled:      { default: true },
     rotationControls:     { default: ['hmd', 'gamepad', 'mouse'] },
-    movementSpeed:        { default: 5 }, // m/s
     movementEasing:       { default: 15 }, // m/s2
     movementEasingY:      { default: 0  }, // m/s2
     movementAcceleration: { default: 80 }, // m/s2
     rotationSensitivity:  { default: 0.05 }, // radians/frame, ish
     fly:                  { default: false },
+    useNavSystem:         { default: false },
   },
 
   /*******************************************************************
@@ -90,20 +91,49 @@ module.exports = {
    * Tick
    */
 
-  tick: function (t, dt) {
-    if (!dt) { return; }
+  tick: (function (t, dt) {
+    var startPosition = new THREE.Vector3();
+    var endPosition = new THREE.Vector3();
 
-    // Update rotation.
-    if (this.data.rotationEnabled) this.updateRotation(dt);
+    return function (t, dt) {
+      if (!dt) { return; }
 
-    // Update velocity. If FPS is too low, reset.
-    if (this.data.movementEnabled && dt / 1000 > MAX_DELTA) {
-      this.velocity.set(0, 0, 0);
-      this.el.setAttribute('velocity', this.velocity);
-    } else {
-      this.updateVelocity(dt);
-    }
-  },
+      // Update rotation.
+      if (this.data.rotationEnabled) this.updateRotation(dt);
+
+      // Update velocity. If FPS is too low, reset.
+      if (this.data.movementEnabled && dt / 1000 > MAX_DELTA) {
+        this.velocity.set(0, 0, 0);
+      } else {
+        this.updateVelocity(dt);
+      }
+
+      if (this.data.useNavSystem) {
+        if (this.velocity.lengthSq() < EPS) return;
+
+        // Camera will throw the height around a bit.
+        // TODO: Presumably, so will roomscale.
+        var yOffset = 0;
+        if (this.el.hasAttribute('camera')) {
+          yOffset = this.el.getAttribute('camera').userHeight;
+        }
+
+        startPosition.copy(this.el.getAttribute('position'));
+        startPosition.y -= yOffset;
+        endPosition
+          .copy(this.velocity)
+          .multiplyScalar(dt / 1000)
+          .add(startPosition);
+
+        var nav = this.el.sceneEl.systems.nav;
+        var clampedPosition = nav.clampToNavMesh(startPosition, endPosition);
+        clampedPosition.y += yOffset;
+        this.el.setAttribute('position', clampedPosition);
+      } else {
+        this.el.setAttribute('velocity', this.velocity);
+      }
+    };
+  }()),
 
   /*******************************************************************
    * Rotation
@@ -153,11 +183,10 @@ module.exports = {
           if (control.getVelocityDelta) {
             dVelocity = control.getVelocityDelta(dt);
           } else if (control.getVelocity) {
-            this.el.setAttribute('velocity', control.getVelocity());
+            velocity.copy(control.getVelocity());
             return;
           } else if (control.getPositionDelta) {
             velocity.copy(control.getPositionDelta(dt).multiplyScalar(1000 / dt));
-            this.el.setAttribute('velocity', velocity);
             return;
           } else {
             throw new Error('Incompatible movement controls: ', data.movementControls[i]);
@@ -167,7 +196,7 @@ module.exports = {
       }
     }
 
-    velocity.copy(this.el.getAttribute('velocity'));
+    if (!data.useNavSystem) velocity.copy(this.el.getAttribute('velocity'));
     velocity.x -= velocity.x * data.movementEasing * dt / 1000;
     velocity.y -= velocity.y * data.movementEasingY * dt / 1000;
     velocity.z -= velocity.z * data.movementEasing * dt / 1000;
@@ -192,16 +221,6 @@ module.exports = {
       }
 
       velocity.add(dVelocity);
-
-      // TODO - Several issues here:
-      // (1) Interferes w/ gravity.
-      // (2) Interferes w/ jumping.
-      // (3) Likely to interfere w/ relative position to moving platform.
-      // if (velocity.length() > data.movementSpeed) {
-      //   velocity.setLength(data.movementSpeed);
-      // }
     }
-
-    this.el.setAttribute('velocity', velocity);
   }
 };

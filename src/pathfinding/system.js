@@ -1,5 +1,7 @@
 var Path = require('three-pathfinding');
 
+var ZONE = 'level';
+
 /**
  * nav
  *
@@ -21,7 +23,7 @@ module.exports = {
       : mesh.geometry;
     this.navMesh = new THREE.Mesh(geometry);
     this.nodes = Path.buildNodes(this.navMesh.geometry);
-    Path.setZoneData('level', this.nodes);
+    Path.setZoneData(ZONE, this.nodes);
   },
 
   /**
@@ -53,7 +55,18 @@ module.exports = {
   getPath: function (ctrl, target) {
     var start = ctrl.el.object3D.position;
     // TODO(donmccurdy): Current group should be cached.
-    var group = Path.getGroup('level', start);
-    return Path.findPath(start, target, 'level', group);
+    var group = Path.getGroup(ZONE, start);
+    return Path.findPath(start, target, ZONE, group);
+  },
+
+  clampToNavMesh: function (start, end) {
+    if (!this.navMesh) return end;
+    var group = Path.getGroup(ZONE, start);
+    var startNode = Path.getClosestNode(start, ZONE, group, true);
+    var endNode = Path.getClosestNode(end, ZONE, group, true);
+    if (!startNode || endNode || startNode === endNode) {
+      return end;
+    }
+    return Path.projectPathOnNode(start, end, startNode, ZONE, new THREE.Vector3());
   }
 };
