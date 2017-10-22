@@ -59,14 +59,32 @@ module.exports = {
     return Path.findPath(start, target, ZONE, group);
   },
 
-  clampToNavMesh: function (start, end) {
-    if (!this.navMesh) return end;
-    var group = Path.getGroup(ZONE, start);
-    var startNode = Path.getClosestNode(start, ZONE, group, true);
-    var endNode = Path.getClosestNode(end, ZONE, group, true);
-    if (!startNode || endNode || startNode === endNode) {
-      return end;
-    }
-    return Path.projectPathOnNode(start, end, startNode, ZONE, new THREE.Vector3());
-  }
+  clampToNavMesh: (function () {
+    var point = new THREE.Vector3();
+    var plane = new THREE.Plane();
+    return function (start, end) {
+      if (!this.navMesh) return end;
+      var group = Path.getGroup(ZONE, start);
+      var startNode = Path.getClosestNode(start, ZONE, group, true);
+      var endNode = Path.getClosestNode(end, ZONE, group, true);
+
+      var clampedEnd;
+      if (!startNode) {
+        return end;
+      } else if (!endNode) {
+        clampedEnd = Path.projectPathOnNode(start, end, startNode, ZONE, point);
+        endNode = startNode;
+      } else {
+        clampedEnd = point.copy(end);
+      }
+
+      if (!clampedEnd || clampedEnd === start) {
+        return start;
+      }
+
+      var endNodeVertices = Path.getNodeVertices(endNode, ZONE);
+      plane.setFromCoplanarPoints(endNodeVertices[0], endNodeVertices[1], endNodeVertices[2]);
+      return plane.projectPoint(clampedEnd);
+    };
+  }())
 };

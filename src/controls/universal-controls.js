@@ -112,7 +112,6 @@ module.exports = {
         if (this.velocity.lengthSq() < EPS) return;
 
         // Camera will throw the height around a bit.
-        // TODO: Presumably, so will roomscale.
         var yOffset = 0;
         if (this.el.hasAttribute('camera')) {
           yOffset = this.el.getAttribute('camera').userHeight;
@@ -125,6 +124,7 @@ module.exports = {
           .multiplyScalar(dt / 1000)
           .add(startPosition);
 
+        // TODO: Roomscale is probably broken.
         var nav = this.el.sceneEl.systems.nav;
         var clampedPosition = nav.clampToNavMesh(startPosition, endPosition);
         clampedPosition.y += yOffset;
